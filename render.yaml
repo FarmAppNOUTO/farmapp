@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: farm-app
+    runtime: python
+    buildCommand: "bash build.sh"
+    startCommand: "gunicorn farm_manager.wsgi:application --bind 0.0.0.0:$PORT"
+    envVars:
+      - key: DJANGO_DEBUG
+        value: "False"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: farm-db
+          property: connectionString
+      - key: PYTHON_VERSION
+        value: 3.11.9
+
+databases:
+  - name: farm-db
+    databaseName: farmapp
+    user: farmapp

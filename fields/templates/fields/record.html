@@ -1,0 +1,19 @@
+<h2>{{ field.name }}</h2>
+<p>面積：{{ field.area }}</p>
+<h3>作業履歴</h3>
+<ul>
+  {% for r in records %}
+    <li>
+      {{ r.date }} /
+      {{ r.worker }} /
+      {{ r.content }} /
+      {{ r.target_crop }}
+      {% if r.chemical %}/ {{ r.chemical }}{% endif %}
+      {% if r.quantity %}/ {{ r.quantity }}{% endif %}
+      {% if r.note %}/ {{ r.note }}{% endif %}
+    </li>
+  {% empty %}
+    <li>まだ作業履歴はありません</li>
+  {% endfor %}
+</ul>
+<p><a href="/">地図に戻る</a></p>

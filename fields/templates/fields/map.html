@@ -4,423 +4,380 @@
 <head>
   <meta charset="UTF-8" />
   <title>圃場マップ</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <!-- polylabelライブラリ（必須） -->
   <script src="{% static 'fields/js/polylabel.min.js' %}"></script>
-
   <style>
     html, body { margin:0; padding:0; height:100%; overflow:hidden; font-family:sans-serif; }
-    header { height:60px; background:#2e7d32; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:bold; position:fixed; top:0; left:0; right:0; z-index:1000; }
-    #map { width:100%; height:calc(100vh - 60px); height:calc(100dvh - 60px); margin-top:60px; border:none; }
-
-    /* モーダル */
-    .modal-bg { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.5); z-index:2000; justify-content:center; align-items:center; overflow-y:auto; }
-    .modal { background:#fff; padding:20px; border-radius:8px; max-width:400px; width:90%; box-shadow:0 4px 10px rgba(0,0,0,0.3); }
+    header { height:56px; background:#2e7d32; color:#fff; display:flex; align-items:center; justify-content:center; gap:8px; font-weight:bold; position:fixed; top:0; left:0; right:0; z-index:1000; }
+    #sync-badge { font-size:11px; font-weight:normal; background:rgba(255,255,255,0.2); padding:2px 8px; border-radius:10px; }
+    #map { width:100%; height:calc(100vh - 56px); height:calc(100dvh - 56px); margin-top:56px; border:none; }
+    .modal-bg { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:2000; justify-content:center; align-items:center; overflow-y:auto; }
+    .modal { background:#fff; padding:20px; border-radius:8px; max-width:440px; width:92%; box-shadow:0 4px 10px rgba(0,0,0,0.3); max-height:90vh; overflow-y:auto; }
     .modal h2 { margin-top:0; }
     .modal button { margin-top:10px; padding:8px 12px; border:none; border-radius:4px; cursor:pointer; }
     .add-btn { background:#1976d2; color:#fff; }
     .close-btn { background:#999; color:#fff; margin-left:5px; }
-    .task-list { max-height:150px; overflow-y:auto; margin-top:10px; border-top:1px solid #ccc; padding-top:5px; }
-    .task-item { border-bottom:1px solid #eee; padding:5px 0; font-size:14px; }
-
-    /* 入力フォーム */
+    .sync-btn { background:#2e7d32; color:#fff; font-size:12px; padding:4px 10px !important; margin-top:4px !important; }
+    .task-list { max-height:240px; overflow-y:auto; margin-top:10px; border-top:1px solid #ccc; padding-top:5px; }
+    .task-item { border-bottom:1px solid #eee; padding:6px 0; font-size:13px; display:flex; justify-content:space-between; gap:8px; align-items:flex-start; }
+    .task-item .txt { flex:1; }
+    .task-item .del { background:#c62828; color:#fff; font-size:12px; padding:2px 8px !important; margin-top:0 !important; flex-shrink:0; }
+    .pending-tag { display:inline-block; font-size:10px; background:#ff9800; color:#fff; border-radius:8px; padding:0 6px; margin-left:4px; }
     #task-form label { display:block; margin-top:8px; font-weight:bold; }
-    #task-form input, #task-form textarea, #task-form select { width:100%; padding:5px; margin-top:2px; box-sizing:border-box; }
-
-    /* ラベル（背景なし・白フチ文字・preで改行保持） */
-    .field-tooltip {
-      background: transparent !important;
-      border: none !important;
-      box-shadow: none !important;
-      font-size: 10px;
-      font-weight: bold;
-      color: red;
-      text-shadow: 0 0 3px white;
-                   0 0 3px white;
-                   0 0 3px white;
-      white-space: pre;
-      pointer-events: none;
-    }
-
-      /* 作業追加フォームのラベル用 */
-      #task-form label {
-        display: block;   /* ブロックにして必ず改行 */
-        margin-top: 8px;
-        font-weight: bold;
-      }
-
-      /* 作業追加フォームの入力欄 */
-      #task-form input,
-      #task-form select,
-      #task-form textarea {
-        width: 100%;
-        padding: 5px;
-        margin-top: 2px;
-        box-sizing: border-box;
-      }
-
-    @media (max-width:768px){
-      header{height:50px;}
-      #map{height:calc(100vh - 50px); height:calc(100dvh - 50px); margin-top:50px;}
-    }
+    #task-form input, #task-form select, #task-form textarea { width:100%; padding:5px; margin-top:2px; box-sizing:border-box; }
+    .field-tooltip { background:transparent !important; border:none !important; box-shadow:none !important; font-size:10px; font-weight:bold; color:red; text-shadow:0 0 3px white, 0 0 3px white, 0 0 3px white; white-space:pre; pointer-events:none; }
+    .mini-btn { padding:2px 8px !important; margin-top:2px !important; font-size:12px; }
+    .status-line { font-size:12px; color:#555; margin-top:6px; }
+    @media (max-width:768px){ header{height:50px;} #map{height:calc(100vh - 50px); height:calc(100dvh - 50px); margin-top:50px;} }
   </style>
-
-{% csrf_token %}
-<script>
-  // ページ表示時に CSRF トークンを cookie にセット
-  document.cookie = "csrftoken={{ csrf_token }}; path=/";
-</script>
-
 </head>
 <body>
-  <header>圃場マップ</header>
-  <div id="map"></div>
+<header>圃場マップ（畑をタップして記録）<span id="sync-badge">オンライン</span></header>
+<div id="map"></div>
 
-  <!-- モーダル -->
-  <div class="modal-bg" id="modal-bg">
-    <div class="modal">
-      <h2 id="modal-field-name"></h2>
-      <p id="modal-field-crop"></p>
-      <p id="modal-field-area"></p>
+<div class="modal-bg" id="modal-bg">
+  <div class="modal">
+    <h2 id="modal-field-name"></h2>
+    <p id="modal-field-crop"></p>
+    <p id="modal-field-area"></p>
+    <div class="status-line" id="field-status"></div>
+    <button class="sync-btn" onclick="syncCurrentField()">今すぐ同期</button>
 
-      <!-- 作業履歴 -->
-      <div class="task-list" id="task-list">
-        <h3>作業履歴</h3>
-      </div>
+    <div class="task-list" id="task-list"><h3>作業履歴</h3></div>
 
-      <!-- 作業追加ボタン -->
-      <button class="add-btn" id="show-form-btn">作業追加</button>
+    <button class="add-btn" id="show-form-btn">作業追加</button>
 
-      <!-- 作業追加フォーム -->
-      <div id="task-form">
-        <label>日付</label>
-        <input type="date" id="task-date" required>
-
-       <!-- 作業者名 -->
-       <label>作業者名</label>
-       <select id="task-worker" required>
-         <option value="">選択してください</option>
-         {% for w in options.workers %}
-           <option value="{{ w }}">{{ w }}</option>
-         {% endfor %}
-         <option value="_new_">＋ 新しい作業者を追加</option>
-       </select>
-       <button type="button" onclick="deleteSelectedOption('task-worker', 'workers')">🗑</button>
-
-       <!-- 対象作物 -->
-       <label>対象作物</label>
-       <select id="task-target-crop" required>
-         <option value="">選択してください</option>
-         {% for c in options.crops %}
-           <option value="{{ c }}">{{ c }}</option>
-         {% endfor %}
-         <option value="_new_">＋ 新しい作物を追加</option>
-       </select>
-       <button type="button" onclick="deleteSelectedOption('task-target-crop', 'crops')">🗑</button>
-
-        <label>作業内容</label>
-        <input type="text" id="task-content" required>
-
-
-        <label>使用薬剤</label>
-        <input type="text" id="task-chemical">
-        <label>使用量</label>
-        <input type="text" id="task-quantity">
-        <label>備考</label>
-        <textarea id="task-note"></textarea>
-        <button class="add-btn" onclick="addTask()">追加</button>
-      </div>
-
-      <button class="close-btn" onclick="closeModal()">閉じる</button>
+    <div id="task-form" style="display:none;">
+      {% csrf_token %}
+      <label>日付</label>
+      <input type="date" id="task-date" required>
+      <label>作業者名</label>
+      <select id="task-worker" required>
+        <option value="">選択してください</option>
+        {% for w in options.workers %}
+        <option value="{{ w }}">{{ w }}</option>
+        {% endfor %}
+        <option value="_new_">＋ 新しい作業者を追加</option>
+      </select>
+      <button type="button" class="mini-btn" onclick="deleteSelectedOption('task-worker', 'workers')">削除</button>
+      <label>対象作物</label>
+      <select id="task-target-crop" required>
+        <option value="">選択してください</option>
+        {% for c in options.crops %}
+        <option value="{{ c }}">{{ c }}</option>
+        {% endfor %}
+        <option value="_new_">＋ 新しい作物を追加</option>
+      </select>
+      <button type="button" class="mini-btn" onclick="deleteSelectedOption('task-target-crop', 'crops')">削除</button>
+      <label>作業内容</label>
+      <input type="text" id="task-content" required>
+      <label>使用薬剤</label>
+      <input type="text" id="task-chemical">
+      <label>使用量</label>
+      <input type="text" id="task-quantity">
+      <label>備考</label>
+      <textarea id="task-note"></textarea>
+      <button class="add-btn" onclick="addTask()">登録</button>
     </div>
+
+    <button class="close-btn" onclick="closeModal()">閉じる</button>
   </div>
+</div>
 
-  <script>
-    // ======== 地図初期化 =========
-    const map = L.map('map').setView([44.0361, 142.3187], 15);
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      attribution:'Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics'
-    }).addTo(map);
+<script>
+const map = L.map('map').setView([44.0361, 142.3187], 15);
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+  attribution: 'Tiles © Esri'
+}).addTo(map);
 
-    // ------------------------------
-    // モーダル関連
-    // ------------------------------
-    const modalBg = document.getElementById('modal-bg');
-    const fieldNameEl = document.getElementById('modal-field-name');
-    const fieldCropEl = document.getElementById('modal-field-crop');
-    const fieldAreaEl = document.getElementById('modal-field-area');
-    const taskListEl = document.getElementById('task-list');
-    const taskFormEl = document.getElementById('task-form');
-    const showFormBtn = document.getElementById('show-form-btn');
+const cropColors = { 'そば': '#f4a261', '小麦': '#2a9d8f', 'じゃがいも': '#e76f51', 'default': '#8d99ae' };
+const modalBg = document.getElementById('modal-bg');
+const taskListEl = document.getElementById('task-list');
+const taskFormEl = document.getElementById('task-form');
+const showFormBtn = document.getElementById('show-form-btn');
+const badgeEl = document.getElementById('sync-badge');
+const statusEl = document.getElementById('field-status');
+let currentField = null;
 
-    const taskData = {}; // 作業履歴オブジェクト
+const LS_PENDING = 'farm_pending_v1';
+const lsServer = (fid) => `farm_server_${fid}`;
+const lsSince = (fid) => `farm_since_${fid}`;
 
-    // 作物ごとの色
-    const cropColors = {
-      'そば': '#f4a261',
-      '小麦': '#2a9d8f',
-      'じゃがいも': '#e76f51',
-      'トマト': '#e63946',
-      'default': '#8d99ae'
-    };
-
-    const tooltips = []; // ラベル保持用配列
-
-    // モーダル開閉
-    function openModal(field){
-      fieldNameEl.textContent = field.name;
-      fieldCropEl.textContent = '作物: ' + field.crop;
-      fieldAreaEl.textContent = '面積: ' + field.area;
-      modalBg.style.display = 'flex';
-      modalBg.dataset.fieldId = field.id;
-
-      taskFormEl.style.display = 'none';
-      showFormBtn.style.display = 'block';
-
-      renderTaskList(field.id);
-    }
-
-    function closeModal(){
-      modalBg.style.display = 'none';
-      ['task-date','task-worker','task-content','task-target-crop','task-chemical','task-quantity','task-note']
-        .forEach(id=>document.getElementById(id).value='');
-    }
-
-    // 作業履歴表示
-    function renderTaskList(fieldId){
-      taskListEl.innerHTML='<h3>作業履歴</h3>';
-      if(!taskData[fieldId] || taskData[fieldId].length===0){
-        taskListEl.innerHTML+='<p>まだ作業履歴はありません</p>';
-        return;
-      }
-      taskData[fieldId].forEach(task=>{
-        const div=document.createElement('div');
-        div.className='task-item';
-        div.innerHTML=`${task.date} - ${task.worker} - ${task.content} - ${task.targetCrop} - ${task.chemical||'-'} - ${task.quantity||'-'} - ${task.note||'-'}`;
-        taskListEl.appendChild(div);
-      });
-    }
-
-    showFormBtn.onclick = () => {
-      taskFormEl.style.display = 'block';
-      showFormBtn.style.display = 'none';
-    }
-
-    function addTask(){
-      const fieldId = modalBg.dataset.fieldId;
-      const task = {
-        date: document.getElementById('task-date').value,
-        worker: document.getElementById('task-worker').value,
-        content: document.getElementById('task-content').value,
-        targetCrop: document.getElementById('task-target-crop').value,
-        chemical: document.getElementById('task-chemical').value,
-        quantity: document.getElementById('task-quantity').value,
-        note: document.getElementById('task-note').value
-      };
-      if(!task.date || !task.worker || !task.content || !task.targetCrop){
-        alert('必須項目を入力してください');
-        return;
-      }
-      if(!taskData[fieldId]) taskData[fieldId]=[];
-      taskData[fieldId].push(task);
-
-      renderTaskList(fieldId);
-      ['task-date','task-worker','task-content','task-target-crop','task-chemical','task-quantity','task-note']
-        .forEach(id=>document.getElementById(id).value='');
-      taskFormEl.style.display='none';
-      showFormBtn.style.display='block';
-    }
-
-    // === 重なり防止用: すでに配置済みラベル位置を記録 ===
-    const placedLabels = [];
-
-    // ======== GeoJSON 読み込み・ラベル配置 =========
-    fetch("{% static 'fields/data/和寒ML.geojson' %}")
-      .then(response => response.json())
-      .then(data => {
-        L.geoJSON(data, {
-          style: feature => ({
-            color:'#555',
-            weight:1,
-            fillColor: cropColors[feature.properties.crop] || cropColors['default'],
-            fillOpacity:0.6
-          }),
-          onEachFeature: (feature, layer) => {
-            layer.on('click', () => openModal(feature.properties));
-
-            // === polylabelで最適ラベル位置取得 ===
-            let coords = feature.geometry.type === "Polygon"
-              ? feature.geometry.coordinates
-              : feature.geometry.coordinates[0];
-            let bestPoint = polylabel(coords, 1.0);
-            let latlng = [bestPoint[1], bestPoint[0]];
-
-            // === 重なりを検出して少しずらす（簡易処理） ===
-            const OFFSET = 0.00005; // 約5mずらす
-            placedLabels.forEach(p => {
-              const dx = latlng[0] - p[0];
-              const dy = latlng[1] - p[1];
-              if (Math.sqrt(dx*dx + dy*dy) < OFFSET * 2) {
-                latlng[0] += OFFSET;
-                latlng[1] += OFFSET;
-              }
-            });
-            placedLabels.push(latlng);
-
-            const name = feature.properties.name || "未設定";
-            const crop = feature.properties.crop || "";
-
-            const tooltip = L.tooltip({
-              permanent: true,
-              direction: 'center',
-              className: 'field-tooltip',
-              interactive: false
-            })
-              .setLatLng(latlng)
-              .setContent(map.getZoom() >= 16 ? `${name}\n${crop}` : name)
-              .addTo(map);
-
-            // === ズーム切り替え ===
-            map.on("zoomend", () => {
-              tooltip.setContent(map.getZoom() >= 16 ? `${name}\n${crop}` : name);
-            });
-          }
-        }).addTo(map);
-      });
-
-// ===== ヘルパー関数の導入 =====
 function getCookie(name) {
-  let cookieValue = null;
-  if (document.cookie && document.cookie !== '') {
-    const cookies = document.cookie.split(';');
-    for (let i = 0; i < cookies.length; i++) {
-      const cookie = cookies[i].trim();
-      if (cookie.substring(0, name.length + 1) === (name + '=')) {
-        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-        break;
-      }
+  let v = null;
+  if (document.cookie) {
+    for (const c of document.cookie.split(';')) {
+      const t = c.trim();
+      if (t.startsWith(name + '=')) { v = decodeURIComponent(t.substring(name.length + 1)); break; }
     }
   }
-  return cookieValue;
+  return v;
+}
+function newUuid() {
+  if (crypto && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+function loadPending() {
+  try { return JSON.parse(localStorage.getItem(LS_PENDING) || '[]'); }
+  catch (e) { return []; }
+}
+function savePending(p) { localStorage.setItem(LS_PENDING, JSON.stringify(p)); }
+function pendingForField(fid) { return loadPending().filter((o) => String(o.field_id) === String(fid)); }
+function loadServerCache(fid) {
+  try { return JSON.parse(localStorage.getItem(lsServer(fid)) || 'null') || { records: [] }; }
+  catch (e) { return { records: [] }; }
+}
+function saveServerCache(fid, data) { localStorage.setItem(lsServer(fid), JSON.stringify(data)); }
+
+function updateBadge() {
+  const online = navigator.onLine;
+  const n = loadPending().length;
+  badgeEl.textContent = (online ? 'オンライン' : 'オフライン') + (n ? `・未同期${n}件` : '');
+  badgeEl.style.background = !online ? '#616161' : (n ? '#ef6c00' : 'rgba(255,255,255,0.2)');
+}
+function updateFieldStatus(msg) {
+  const n = currentField ? pendingForField(currentField.id).length : 0;
+  statusEl.textContent = `${msg || ''}${n ? `（この畑の未同期: ${n}件・端末内保存中）` : ''}`;
 }
 
-// ===== 新しい選択肢追加処理 =====
-function promptNewOption(selectId, type) {
-  const newValue = prompt("新しい項目を入力してください:");
-  if (!newValue) return;
+function mergedRecords(fid) {
+  const server = loadServerCache(fid).records || [];
+  const byUuid = new Map(server.map((r) => [String(r.uuid), r]));
+  for (const op of pendingForField(fid)) {
+    const key = String(op.uuid);
+    if (op.op === 'delete') byUuid.delete(key);
+    else byUuid.set(key, { ...op, uuid: key, _pending: true });
+  }
+  return [...byUuid.values()].sort((a, b) => String(b.date).localeCompare(String(a.date)));
+}
 
-  fetch('/save_option/', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-CSRFToken': getCookie('csrftoken')
-    },
-    body: JSON.stringify({
-      type: type,
-      value: newValue
-    })
-  })
-  .then(res => res.json()) // ← ここで JSON を受け取る
-  .then(data => {           // ← ここで data が response の役割
-    if (data.status === 'ok') {
-      alert(`「${data.added}」を追加しました。`);
-
-      const select = document.getElementById(selectId);
-      const option = document.createElement('option');
-      option.value = data.added;
-      option.textContent = data.added;
-
-      // 「＋新しく追加する」の直前に追加
-      const newOption = Array.from(select.options).find(opt => opt.value === "_new_");
-      if (newOption) {
-        select.insertBefore(option, newOption);
-      } else {
-        select.appendChild(option);
-      }
-
-      select.value = data.added;
-    } else {
-      alert("追加に失敗しました。");
+function renderTaskList() {
+  if (!currentField) return;
+  const tasks = mergedRecords(currentField.id);
+  const pendingUuids = new Set(pendingForField(currentField.id).map((o) => String(o.uuid)));
+  taskListEl.innerHTML = '<h3>作業履歴</h3>';
+  if (!tasks.length) { taskListEl.innerHTML += '<p>まだ作業履歴はありません</p>'; return; }
+  tasks.forEach((t) => {
+    const div = document.createElement('div');
+    div.className = 'task-item';
+    const txt = document.createElement('div');
+    txt.className = 'txt';
+    txt.textContent = `${t.date} / ${t.worker} / ${t.content} / ${t.target_crop} / ${t.chemical || '-'} / ${t.quantity || '-'} / ${t.note || '-'}${t.created_by ? ` (${t.created_by})` : ''}`;
+    if (pendingUuids.has(String(t.uuid))) {
+      const tag = document.createElement('span');
+      tag.className = 'pending-tag';
+      tag.textContent = '未同期';
+      txt.appendChild(tag);
     }
-  })
-  .catch(err => {
-    console.error("Fetch エラー:", err);
-    alert("サーバー通信エラーです。");
+    const del = document.createElement('button');
+    del.className = 'del';
+    del.textContent = '削除';
+    del.onclick = () => deleteTask(String(t.uuid));
+    div.appendChild(txt);
+    div.appendChild(del);
+    taskListEl.appendChild(div);
   });
 }
 
-// ===== 選択肢の削除処理 =====
-function deleteSelectedOption(selectId, type) {
-  const select = document.getElementById(selectId);
-  const value = select.value;
+function openModal(field) {
+  currentField = field;
+  document.getElementById('modal-field-name').textContent = field.name || '未設定';
+  document.getElementById('modal-field-crop').textContent = '作物: ' + (field.crop || '');
+  document.getElementById('modal-field-area').textContent = '面積: ' + (field.area || '');
+  modalBg.style.display = 'flex';
+  taskFormEl.style.display = 'none';
+  showFormBtn.style.display = 'block';
+  renderTaskList();
+  updateFieldStatus('端末の保存を表示中...');
+  syncCurrentField();
+}
+function closeModal() {
+  modalBg.style.display = 'none';
+  currentField = null;
+  ['task-date','task-worker','task-content','task-target-crop','task-chemical','task-quantity','task-note'].forEach((id) => document.getElementById(id).value = '');
+}
 
-  if (!value || value === "_new_") {
-    alert("削除する項目を選択してください。");
+showFormBtn.onclick = () => { taskFormEl.style.display = 'block'; showFormBtn.style.display = 'none'; };
+
+function collectForm() {
+  return {
+    date: document.getElementById('task-date').value,
+    worker: document.getElementById('task-worker').value,
+    content: document.getElementById('task-content').value,
+    target_crop: document.getElementById('task-target-crop').value,
+    chemical: document.getElementById('task-chemical').value,
+    quantity: document.getElementById('task-quantity').value,
+    note: document.getElementById('task-note').value
+  };
+}
+
+async function addTask() {
+  if (!currentField) return;
+  const f = collectForm();
+  if (!f.date || !f.worker || f.worker === '_new_' || !f.content || !f.target_crop || f.target_crop === '_new_') {
+    alert('必須項目を入力してください');
     return;
   }
-
-  if (!confirm(`「${value}」を削除しますか？`)) return;
-
-  fetch('/delete_option/', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-CSRFToken': getCookie('csrftoken')
-    },
-    body: JSON.stringify({ type: type, value: value })
-  })
-  .then(res => res.json())
-  .then(data => {
-    if (data.status === 'ok') {
-      alert(`「${data.deleted}」を削除しました。`);
-    } else {
-      alert(data.message || "削除に失敗しました。");
-    }
-  })
-  .catch(err => {
-    console.error("Fetch エラー:", err);
-    alert("サーバー通信エラーです。");
-  });
+  const op = {
+    op: 'upsert', uuid: newUuid(), field_id: currentField.id,
+    field_name: currentField.name || '', field_crop: currentField.crop || '', field_area: currentField.area || '',
+    ...f, queued_at: new Date().toISOString()
+  };
+  const p = loadPending();
+  p.push(op);
+  savePending(p);
+  updateBadge();
+  renderTaskList();
+  updateFieldStatus('端末に保存しました。同期中...');
+  ['task-date','task-worker','task-content','task-target-crop','task-chemical','task-quantity','task-note'].forEach((id) => document.getElementById(id).value = '');
+  taskFormEl.style.display = 'none';
+  showFormBtn.style.display = 'block';
+  await syncCurrentField();
 }
 
+async function deleteTask(uuid) {
+  if (!currentField) return;
+  if (!confirm('この作業履歴を削除しますか？（全端末に反映されます）')) return;
+  const fid = currentField.id;
+  const server = loadServerCache(fid).records || [];
+  const onServer = server.some((r) => String(r.uuid) === String(uuid));
+  let pending = loadPending();
+  pending = pending.filter((o) => !(String(o.uuid) === String(uuid) && String(o.field_id) === String(fid) && o.op === 'upsert'));
+  if (onServer) {
+    pending.push({ op: 'delete', uuid, field_id: fid, queued_at: new Date().toISOString() });
+  }
+  savePending(pending);
+  updateBadge();
+  renderTaskList();
+  updateFieldStatus('削除を端末に保存しました。同期中...');
+  await syncCurrentField();
+}
 
+async function syncCurrentField() {
+  if (!currentField) { updateBadge(); return; }
+  const fid = currentField.id;
+  updateBadge();
+  if (!navigator.onLine) {
+    updateFieldStatus('オフライン中：端末の保存を表示しています。');
+    return;
+  }
+  const changes = pendingForField(fid);
+  try {
+    const res = await fetch('/api/records/sync/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+      body: JSON.stringify({ field_id: fid, updated_since: null, changes })
+    });
+    const data = await res.json();
+    if (data.status !== 'ok') throw new Error(data.message || 'sync failed');
+    const okUuids = new Set();
+    (data.results || []).forEach((r, i) => {
+      const req = changes[i];
+      if (!req) return;
+      if (r.status === 'ok' || r.code === 'already_deleted') okUuids.add(String(req.uuid) + '|' + String(req.op));
+    });
+    const rest = loadPending().filter((o) => {
+      if (String(o.field_id) !== String(fid)) return true;
+      return !okUuids.has(String(o.uuid) + '|' + String(o.op));
+    });
+    savePending(rest);
+    saveServerCache(fid, { records: data.records || [], server_time: data.server_time });
+    try { localStorage.setItem(lsSince(fid), data.server_time || ''); } catch (e) {}
+    updateBadge();
+    renderTaskList();
+    const left = pendingForField(fid).length;
+    const conflicts = (data.results || []).filter((r) => r.code === 'already_deleted').length;
+    let msg = `最新を表示中（同期: ${new Date().toLocaleTimeString()}）`;
+    if (conflicts) msg += `・削除済みのため${conflicts}件は復活させませんでした`;
+    updateFieldStatus(left ? msg + '・一部は未同期で端末に残しています' : msg);
+  } catch (e) {
+    console.error(e);
+    updateBadge();
+    renderTaskList();
+    updateFieldStatus('同期に失敗：端末の保存を表示しています。');
+  }
+}
 
-// ===== イベント登録 =====
+window.addEventListener('online', () => { updateBadge(); syncCurrentField(); });
+window.addEventListener('offline', () => { updateBadge(); updateFieldStatus('オフライン中：端末の保存を表示しています。'); });
+
+function promptNewOption(selectId, type) {
+  const v = prompt('新しい項目を入力してください:');
+  if (!v) { document.getElementById(selectId).value = ''; return; }
+  fetch('/save_option/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+    body: JSON.stringify({ type, value: v })
+  }).then((r) => r.json()).then((data) => {
+    if (data.status === 'ok') {
+      const sel = document.getElementById(selectId);
+      const opt = document.createElement('option');
+      opt.value = data.added; opt.textContent = data.added;
+      const marker = Array.from(sel.options).find((o) => o.value === '_new_');
+      if (marker) sel.insertBefore(opt, marker); else sel.appendChild(opt);
+      sel.value = data.added;
+    } else alert('追加に失敗しました');
+  }).catch((e) => { console.error(e); alert('サーバー通信エラーです'); });
+}
+
+function deleteSelectedOption(selectId, type) {
+  const sel = document.getElementById(selectId);
+  const value = sel.value;
+  if (!value || value === '_new_') { alert('削除する項目を選択してください'); return; }
+  if (!confirm(`「${value}」を削除しますか？`)) return;
+  fetch('/delete_option/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+    body: JSON.stringify({ type, value })
+  }).then((r) => r.json()).then((data) => {
+    if (data.status === 'ok') {
+      Array.from(sel.options).forEach((o) => { if (o.value === value) o.remove(); });
+      sel.value = '';
+    } else alert(data.message || '削除に失敗しました');
+  }).catch((e) => { console.error(e); alert('サーバー通信エラーです'); });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-  const workerSelect = document.getElementById('task-worker');
-  const cropSelect = document.getElementById('task-target-crop');
-
-  workerSelect.addEventListener('change', function() {
-    if (this.value === '_new_') {
-      promptNewOption('task-worker', 'workers');
-    }
+  updateBadge();
+  document.getElementById('task-worker').addEventListener('change', function() {
+    if (this.value === '_new_') promptNewOption('task-worker', 'workers');
   });
-
-  cropSelect.addEventListener('change', function() {
-    if (this.value === '_new_') {
-      promptNewOption('task-target-crop', 'crops');
-    }
+  document.getElementById('task-target-crop').addEventListener('change', function() {
+    if (this.value === '_new_') promptNewOption('task-target-crop', 'crops');
   });
 });
 
-
-// ===== CSRF トークン取得 =====
-function getCookie(name) {
-  let cookieValue = null;
-  if (document.cookie && document.cookie !== '') {
-    const cookies = document.cookie.split(';');
-    for (let cookie of cookies) {
-      cookie = cookie.trim();
-      if (cookie.startsWith(name + '=')) {
-        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-        break;
+const placedLabels = [];
+fetch("{% static 'fields/data/和寒ML.geojson' %}")
+  .then((res) => res.json())
+  .then((data) => {
+    L.geoJSON(data, {
+      style: (f) => ({ color: '#555', weight: 1, fillColor: cropColors[f.properties.crop] || cropColors.default, fillOpacity: 0.6 }),
+      onEachFeature: (feature, layer) => {
+        layer.on('click', () => openModal(feature.properties));
+        let coords = feature.geometry.type === 'Polygon' ? feature.geometry.coordinates : feature.geometry.coordinates[0];
+        const pt = polylabel(coords, 1.0);
+        let latlng = [pt[1], pt[0]];
+        const OFFSET = 0.00005;
+        placedLabels.forEach((p) => {
+          if (Math.hypot(latlng[0]-p[0], latlng[1]-p[1]) < OFFSET * 2) { latlng[0] += OFFSET; latlng[1] += OFFSET; }
+        });
+        placedLabels.push(latlng);
+        const name = feature.properties.name || '未設定';
+        const crop = feature.properties.crop || '';
+        const tooltip = L.tooltip({ permanent: true, direction: 'center', className: 'field-tooltip' })
+          .setLatLng(latlng)
+          .setContent(map.getZoom() >= 16 ? `${name}\n${crop}` : name)
+          .addTo(map);
+        map.on('zoomend', () => tooltip.setContent(map.getZoom() >= 16 ? `${name}\n${crop}` : name));
       }
-    }
-  }
-  return cookieValue;
-}
-
-  </script>
+    }).addTo(map);
+  });
+</script>
 </body>
 </html>
